@@ -37,7 +37,6 @@ class MDP(object):
         self.nA = nA # number of actions
         self.desc = desc # grid description (for plotting)
 
-# ✅ FIXED HERE:
 P = env.P
 nS = env.observation_space.n
 nA = env.action_space.n
@@ -82,7 +81,10 @@ def value_iteration(mdp, gamma, nIt):
         print("%4i      | %6.5f      | %4s          | %5.3f" % (it, max_diff, nChgActions, V[0]))
         Vs.append(V)
         pis.append(pi)
+        if np.allclose(V, Vprev, atol=0.002):  # better numerical stability than (V == Vprev).all()
+            break
     return Vs, pis
+
 
 GAMMA = 0.95
 Vs_VI, pis_VI = value_iteration(mdp, gamma=GAMMA, nIt=50)
