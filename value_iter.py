@@ -1,28 +1,28 @@
 ##################################
 # Create env
 import gym
-env = gym.make('FrozenLake-v0')
-env = env.env
+env = gym.make('FrozenLake-v1', render_mode='human')
+env = env.unwrapped  # <-- allows access to internal MDP info
 print(env.__doc__)
 print("")
 
 #################################
 # Some basic imports and setup
-# Let's look at what a random episode looks like.
-
 import numpy as np, numpy.random as nr, gym
 import matplotlib.pyplot as plt
 #%matplotlib inline
 np.set_printoptions(precision=3)
 
 # Seed RNGs so you get the same printouts as me
-env.seed(0); from gym.spaces import prng; prng.seed(10)
+env.reset(seed=0); np.random.seed(10)
+
 # Generate the episode
 env.reset()
 for t in range(100):
     env.render()
     a = env.action_space.sample()
-    ob, rew, done, _ = env.step(a)
+    ob, rew, terminated, truncated, info = env.step(a)
+    done = terminated or truncated
     if done:
         break
 assert done
@@ -30,16 +30,20 @@ env.render();
 
 #################################
 # Create MDP for our env
-# We extract the relevant information from the gym Env into the MDP class below.
-# The `env` object won't be used any further, we'll just use the `mdp` object.
-
 class MDP(object):
     def __init__(self, P, nS, nA, desc=None):
-        self.P = P # state transition and reward probabilities, explained below
+        self.P = P # state transition and reward probabilities
         self.nS = nS # number of states
         self.nA = nA # number of actions
-        self.desc = desc # 2D array specifying what each grid cell means (used for plotting)
-mdp = MDP( {s : {a : [tup[:3] for tup in tups] for (a, tups) in a2d.items()} for (s, a2d) in env.P.items()}, env.nS, env.nA, env.desc)
+        self.desc = desc # grid description (for plotting)
+
+# ✅ FIXED HERE:
+P = env.P
+nS = env.observation_space.n
+nA = env.action_space.n
+desc = env.desc if hasattr(env, "desc") else None
+
+mdp = MDP({s: {a: [tup[:3] for tup in tups] for a, tups in a2d.items()} for s, a2d in P.items()}, nS, nA, desc)
 
 print("")
 print("mdp.P is a two-level dict where the first key is the state and the second key is the action.")
@@ -54,52 +58,37 @@ for i in range(4):
 print("")
 
 #################################
-# Programing Question No. 1 - implement where required.
+# Programming Question No. 1 - Value Iteration
 
 def value_iteration(mdp, gamma, nIt):
-    """
-    Inputs:
-        mdp: MDP
-        gamma: discount factor
-        nIt: number of iterations, corresponding to n above
-    Outputs:
-        (value_functions, policies)
-
-    len(value_functions) == nIt+1 and len(policies) == nIt
-    """
     print("Iteration | max|V-Vprev| | # chg actions | V[0]")
     print("----------+--------------+---------------+---------")
-    Vs = [np.zeros(mdp.nS)] # list of value functions contains the initial value function V^{(0)}, which is zero
+    Vs = [np.zeros(mdp.nS)]
     pis = []
     for it in range(nIt):
-        oldpi = pis[-1] if len(pis) > 0 else None # \pi^{(it)} = Greedy[V^{(it-1)}]. Just used for printout
-        Vprev = Vs[-1] # V^{(it)}
-
-        # Your code should fill in meaningful values for the following two variables
-        # pi: greedy policy for Vprev (not V),
-        #     corresponding to the math above: \pi^{(it)} = Greedy[V^{(it)}]
-        #     ** it needs to be numpy array of ints **
-        # V: bellman backup on Vprev
-        #     corresponding to the math above: V^{(it+1)} = T[V^{(it)}]
-        #     ** numpy array of floats **
-
-        V = Vprev # REPLACE THIS LINE WITH YOUR CODE
-        pi = oldpi # REPLACE THIS LINE WITH YOUR CODE
-
+        oldpi = pis[-1] if pis else None
+        Vprev = Vs[-1]
+        V = np.zeros(mdp.nS)
+        pi = np.zeros(mdp.nS, dtype=int)
+        for s in range(mdp.nS):
+            q_sa = np.zeros(mdp.nA)
+            for a in range(mdp.nA):
+                for (prob, next_state, reward) in mdp.P[s][a]:
+                    q_sa[a] += prob * (reward + gamma * Vprev[next_state])
+            V[s] = np.max(q_sa)
+            pi[s] = np.argmax(q_sa)
         max_diff = np.abs(V - Vprev).max()
-        nChgActions="N/A" if oldpi is None else (pi != oldpi).sum()
-        print("%4i      | %6.5f      | %4s          | %5.3f"%(it, max_diff, nChgActions, V[0]))
+        nChgActions = "N/A" if oldpi is None else (pi != oldpi).sum()
+        print("%4i      | %6.5f      | %4s          | %5.3f" % (it, max_diff, nChgActions, V[0]))
         Vs.append(V)
         pis.append(pi)
     return Vs, pis
 
-GAMMA = 0.95 # we'll be using this same value in subsequent problems
-Vs_VI, pis_VI = value_iteration(mdp, gamma=GAMMA, nIt=20)
+GAMMA = 0.95
+Vs_VI, pis_VI = value_iteration(mdp, gamma=GAMMA, nIt=50)
 
 #################################
-# Below is code for illustrating the progress of value iteration.
-# Your optimal actions are shown by arrows.
-# At the bottom, the value of the different states are plotted.
+# Visualization of Value Iteration
 
 for (V, pi) in zip(Vs_VI[:10], pis_VI[:10]):
     plt.figure(figsize=(3,3))
@@ -116,8 +105,21 @@ for (V, pi) in zip(Vs_VI[:10], pis_VI[:10]):
         for x in range(4):
             a = Pi[y, x]
             u, v = a2uv[a]
-            plt.arrow(x, y,u*.3, -v*.3, color='m', head_width=0.1, head_length=0.1)
+            plt.arrow(x, y, u*.3, -v*.3, color='m', head_width=0.1, head_length=0.1)
             plt.text(x, y, str(env.desc[y,x].item().decode()),
-                     color='g', size=12,  verticalalignment='center',
+                     color='g', size=12, verticalalignment='center',
                      horizontalalignment='center', fontweight='bold')
     plt.grid(color='b', lw=2, ls='-')
+
+# Plot each state's value as a function of iteration
+Vs_array = np.array(Vs_VI)  # Shape: (nIt+1, nS)
+plt.figure(figsize=(10,6))
+for s in range(mdp.nS):
+    plt.plot(range(len(Vs_array)), Vs_array[:, s], label=f"State {s}")
+plt.xlabel("Iteration")
+plt.ylabel("Value")
+plt.title("State Values Over Iterations (Value Iteration)")
+plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+plt.grid(True)
+plt.tight_layout()
+plt.show()
