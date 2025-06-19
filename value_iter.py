@@ -60,8 +60,6 @@ print("")
 # Programming Question No. 1 - Value Iteration
 
 def value_iteration(mdp, gamma, nIt):
-    print("Iteration | max|V-Vprev| | # chg actions | V[0]")
-    print("----------+--------------+---------------+---------")
     Vs = [np.zeros(mdp.nS)]
     pis = []
     for it in range(nIt):
@@ -76,15 +74,6 @@ def value_iteration(mdp, gamma, nIt):
                     q_sa[a] += prob * (reward + gamma * Vprev[next_state])
             V[s] = np.max(q_sa)
             pi[s] = np.argmax(q_sa)
-        max_diff = np.abs(V - Vprev).max()
-        nChgActions = "N/A" if oldpi is None else (pi != oldpi).sum()
-        print("%4i      | %6.5f      | %4s          | %5.3f" % (it, max_diff, nChgActions, V[0]))
-
-        # Print value function as 4x4 grid
-        print("V =")
-        print(V.reshape(4, 4))
-        print()
-
         Vs.append(V)
         pis.append(pi)
         if np.allclose(V, Vprev, atol=0.002):
@@ -95,18 +84,27 @@ def value_iteration(mdp, gamma, nIt):
 
 GAMMA = 0.95
 Vs_VI, pis_VI = value_iteration(mdp, gamma=GAMMA, nIt=50)
-# Print value and policy matrices with arrows for each epoch
+
+# Print summary table
+print("Iteration | max|V-Vprev| | # chg actions | V[0]")
+print("----------+--------------+---------------+---------")
+for it, (V, pi) in enumerate(zip(Vs_VI[1:], pis_VI)):
+    Vprev = Vs_VI[it]
+    max_diff = np.abs(V - Vprev).max()
+    nChgActions = "N/A" if it == 0 else (pi != pis_VI[it-1]).sum()
+    print("%4i      | %6.5f      | %4s          | %5.3f" % (it, max_diff, nChgActions, V[0]))
+
+# Print value function and policy for each iteration
 action_arrows = {0: '←', 1: '↓', 2: '→', 3: '↑'}
-for epoch, (V, pi) in enumerate(zip(Vs_VI, pis_VI)):
-    print(f"Epoch {epoch}:")
+for epoch, (V, pi) in enumerate(zip(Vs_VI[1:], pis_VI)):
+    print(f"\nIteration {epoch}:")
     print("Value function:")
-    print(V.reshape(4, 4))
+    print(np.array2string(np.array(V).reshape(4, 4), precision=3, suppress_small=True))
     print("Policy:")
-    pi_grid = pi.reshape(4, 4)
+    pi_grid = np.array(pi).reshape(4, 4)
     arrow_grid = np.vectorize(action_arrows.get)(pi_grid)
     for row in arrow_grid:
         print(' '.join(row))
-    print()
 
 for epoch, (V, pi) in enumerate(zip(Vs_VI, pis_VI)):
     plt.figure(figsize=(3,3))

@@ -136,6 +136,17 @@ def policy_iteration(mdp, gamma, nIt):
 # Run policy iteration
 Vs_PI, pis_PI = policy_iteration(mdp, gamma=GAMMA, nIt=20)
 
+action_arrows = {0: '←', 1: '↓', 2: '→', 3: '↑'}
+for epoch, (V, pi) in enumerate(zip(Vs_PI, pis_PI[1:])):  # skip the initial pi
+    print(f"Iteration {epoch}:")
+    print("Value function:")
+    print(np.array2string(np.array(V).reshape(4, 4), precision=3, suppress_small=True))
+    print("Policy:")
+    pi_grid = np.array(pi).reshape(4, 4)
+    arrow_grid = np.vectorize(action_arrows.get)(pi_grid)
+    for row in arrow_grid:
+        print(' '.join(row))
+    print()
 
 
 #################################
